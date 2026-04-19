@@ -1,0 +1,133 @@
+// Prisma schema for the DH232 (Digital Hustlas) battle platform.
+// Targets PostgreSQL on Supabase. The `id` columns are UUIDs that
+// match the Supabase Auth `auth.users.id` for the User row.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  USER
+  JUDGE
+  ADMIN
+}
+
+enum RoundStatus {
+  DRAFT
+  REGISTRATION
+  ACTIVE
+  JUDGING
+  FINISHED
+}
+
+enum ParticipantStatus {
+  REGISTERED
+  IN_PROGRESS
+  SUBMITTED
+  EXPIRED
+  DISQUALIFIED
+}
+
+model User {
+  id           String   @id @db.Uuid
+  email        String   @unique
+  username     String   @unique
+  avatarUrl    String?  @map("avatar_url")
+  bio          String?
+  links        Json?
+  role         Role     @default(USER)
+  totalScore   Float    @default(0) @map("total_score")
+  hallOfFame   Boolean  @default(false) @map("hall_of_fame")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  participants Participant[]
+  scoresGiven  Score[]       @relation("JudgeScores")
+
+  @@map("users")
+}
+
+model Round {
+  id                 String      @id @default(uuid()) @db.Uuid
+  title              String
+  description        String?
+  coverUrl           String?     @map("cover_url")
+  samplePackUrl      String?     @map("sample_pack_url")
+  samplePackPath     String?     @map("sample_pack_path")
+  status             RoundStatus @default(DRAFT)
+  rules              Json?
+  prizePool          String?     @map("prize_pool")
+  startDate          DateTime?   @map("start_date")
+  endDate            DateTime?   @map("end_date")
+  timeLimitMinutes   Int?        @map("time_limit_minutes")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+
+  participants Participant[]
+  submissions  Submission[]
+
+  @@map("rounds")
+}
+
+model Participant {
+  id        String            @id @default(uuid()) @db.Uuid
+  userId    String            @map("user_id") @db.Uuid
+  roundId   String            @map("round_id") @db.Uuid
+  startedAt DateTime?         @map("started_at")
+  status    ParticipantStatus @default(REGISTERED)
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  round      Round       @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  submission Submission?
+
+  @@unique([userId, roundId])
+  @@index([roundId])
+  @@map("participants")
+}
+
+model Submission {
+  id            String   @id @default(uuid()) @db.Uuid
+  participantId String   @unique @map("participant_id") @db.Uuid
+  roundId       String   @map("round_id") @db.Uuid
+  audioUrl      String   @map("audio_url")
+  audioPath     String?  @map("audio_path")
+  duration      Float?
+  fileName      String?  @map("file_name")
+  fileSize      Int?     @map("file_size")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  round       Round       @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  scores      Score[]
+
+  @@index([roundId])
+  @@map("submissions")
+}
+
+model Score {
+  id           String   @id @default(uuid()) @db.Uuid
+  submissionId String   @map("submission_id") @db.Uuid
+  judgeId      String   @map("judge_id") @db.Uuid
+  mixScore     Float    @map("mix_score")
+  ideaScore    Float    @map("idea_score")
+  sampleScore  Float    @map("sample_score")
+  vibeScore    Float    @map("vibe_score")
+  totalPoints  Float    @map("total_points")
+  comment      String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  judge      User       @relation("JudgeScores", fields: [judgeId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, judgeId])
+  @@index([judgeId])
+  @@map("scores")
+}
